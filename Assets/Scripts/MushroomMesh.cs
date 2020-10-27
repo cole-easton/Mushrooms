@@ -9,14 +9,19 @@ public class MushroomMesh : MonoBehaviour
 	public int axisSubdivisions = 12;
 	
 	private List<Vector3> vertices = new List<Vector3>();
-	private List<int> tris = new List<int>();
 	private MeshFilter meshFilter;
+	private MeshRenderer meshRenderer;
 
     // Start is called before the first frame update
     void Start()
     {
 		meshFilter = gameObject.GetComponent<MeshFilter>();
-		buildCap(x => -x*x);
+		meshFilter.mesh.subMeshCount = 3;
+
+		meshRenderer = gameObject.GetComponent<MeshRenderer>();
+
+		buildCap(x => -x*x, true);
+		buildGills(0.35f, -0.2f);
 		
 		meshFilter.mesh.RecalculateNormals();  
     }
@@ -35,6 +40,7 @@ public class MushroomMesh : MonoBehaviour
 	/// <param name = "includeGradient">Whether the edge of the cap should round around to the bottom</param>
 	private void buildCap(Func<float, float> curve, bool includeGradient = true)
 	{
+		List<int> tris = new List<int>();
 		float curve_0 = curve(0);
 		//put the tippy top of the fungus at the origin; we'll 'grow' it downwards 
 		vertices.Add(new Vector3(0, 0, 0));
@@ -71,8 +77,8 @@ public class MushroomMesh : MonoBehaviour
 			int i = capSubdivisions;
 			while (direction > Mathf.PI / 2)
 			{
-				radius += Mathf.Cos(direction) / 20;
-				y += Mathf.Sin(direction) / 20;
+				radius += Mathf.Cos(direction) / 40; //fineness (influences size too)
+				y += Mathf.Sin(direction) / 40;
 				int startVertex = vertices.Count;
 				vertices.Add(new Vector3(radius, y, 0)); //we do the first one out here so that we can make the tris in the for loop too
 				for (int j = 1; j < axisSubdivisions; j++)
@@ -85,7 +91,7 @@ public class MushroomMesh : MonoBehaviour
 				}
 				tris.AddRange(new int[] { startVertex + axisSubdivisions - 1, startVertex - 1, startVertex,
 				startVertex, startVertex-1, startVertex - axisSubdivisions});
-				direction -= Mathf.PI / 10;
+				direction -= Mathf.PI / 10; // sharpness of curvature (sharper means smaller, too)
 				i++;
 			}
 
@@ -94,9 +100,25 @@ public class MushroomMesh : MonoBehaviour
 		meshFilter.mesh.SetTriangles(tris.ToArray(), 0);
 	}
 
-	private void buildGills(Func<float, float> curve, float length)
+	private void buildGills(float radius, float yOffset = 0)
 	{
-		int currentVert = vertices.Count;
-
+		vertices.AddRange(vertices.GetRange(vertices.Count - axisSubdivisions, axisSubdivisions)); // duplicate ring for hard edge
+		List<int> tris = new List<int>();
+		float subdivisionAngle = Mathf.PI * 2f / axisSubdivisions; //angle between axis subdivisions
+		int startVert = vertices.Count;
+		float y = vertices[vertices.Count - 1].y + yOffset;
+		vertices.Add(new Vector3(radius, y, 0));
+		for (int j = 1; j < axisSubdivisions; j++)
+		{
+			float angle = subdivisionAngle * j;
+			vertices.Add(new Vector3(radius * Mathf.Cos(angle), y, radius * Mathf.Sin(angle)));
+			int currentVert = startVert + j;
+			tris.AddRange(new int[] { currentVert - 1, currentVert - axisSubdivisions - 1, currentVert,
+					currentVert, currentVert - axisSubdivisions - 1, currentVert - axisSubdivisions});
+		}
+		tris.AddRange(new int[] { startVert + axisSubdivisions - 1, startVert - 1, startVert,
+				startVert, startVert-1, startVert - axisSubdivisions});
+		meshFilter.mesh.vertices = vertices.ToArray(); 
+		meshFilter.mesh.SetTriangles(tris.ToArray(), 1);
 	}
 }
