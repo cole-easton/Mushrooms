@@ -24,7 +24,7 @@ public class MushroomMesh : MonoBehaviour
 
 		buildCap(x => -x*x, true);
 		//buildCap(x => Mathf.Sqrt(1.001f-x*x), true);
-		//buildGills(0.35f, -0.2f);
+		buildGills(0.35f, -0.2f);
 		//buildStipe(y => new Vector3(0.2f*Mathf.Cos(1.5f*y), -0.5f*(y-1)*(y-1)+1.5f, 0.2f*Mathf.Sin(1.5f*y)), 1.5f);
 		
 		meshFilter.mesh.RecalculateNormals();  
@@ -136,15 +136,22 @@ public class MushroomMesh : MonoBehaviour
 	private void buildGills(float radius, float yOffset = 0)
 	{
 		vertices.AddRange(vertices.GetRange(vertices.Count - axisSubdivisions, axisSubdivisions)); // duplicate ring for hard edge
-		List<int> tris = new List<int>();
+		float uvRadMultiplier = .5f/Mathf.Sqrt(vertices[vertices.Count - 1].x * vertices[vertices.Count - 1].x + vertices[vertices.Count - 1].z * vertices[vertices.Count - 1].z);
 		float subdivisionAngle = Mathf.PI * 2f / axisSubdivisions; //angle between axis subdivisions
+		for (int i = 0; i < axisSubdivisions; i++)
+		{
+			uVs.Add(new Vector2(.5f * Mathf.Cos(subdivisionAngle * i) + 0.5f, .5f * Mathf.Sin(subdivisionAngle * i) + 0.5f));
+		}
+		List<int> tris = new List<int>();
 		int startVert = vertices.Count;
 		float y = vertices[vertices.Count - 1].y + yOffset;
 		vertices.Add(new Vector3(radius, y, 0));
+		uVs.Add(new Vector2(radius * uvRadMultiplier + 0.5f, 0.5f));
 		for (int j = 1; j < axisSubdivisions; j++)
 		{
 			float angle = subdivisionAngle * j;
 			vertices.Add(new Vector3(radius * Mathf.Cos(angle), y, radius * Mathf.Sin(angle)));
+			uVs.Add(new Vector2(radius*uvRadMultiplier*Mathf.Cos(angle) + 0.5f, radius*uvRadMultiplier*Mathf.Sin(angle) + 0.5f));
 			int currentVert = startVert + j;
 			tris.AddRange(new int[] { currentVert - 1, currentVert - axisSubdivisions - 1, currentVert,
 					currentVert, currentVert - axisSubdivisions - 1, currentVert - axisSubdivisions});
@@ -152,7 +159,9 @@ public class MushroomMesh : MonoBehaviour
 		tris.AddRange(new int[] { startVert + axisSubdivisions - 1, startVert - 1, startVert,
 				startVert, startVert-1, startVert - axisSubdivisions});
 		meshFilter.mesh.vertices = vertices.ToArray(); 
+		meshFilter.mesh.uv = uVs.ToArray();
 		meshFilter.mesh.SetTriangles(tris.ToArray(), 1);
+
 	}
 
 	private void buildStipe(Func<float, Vector3> curve, float length = 1) //the stipe is the "stem" of the mushroom
