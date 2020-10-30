@@ -325,8 +325,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bdab966e939cfa84995d34ed929b29b2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  capSubdivisions: 12
-  axisSubdivisions: 36
+  capSubdivisions: 4
+  axisSubdivisions: 12
+  stipeSubdivisionDensity: 6
 --- !u!23 &1589015656
 MeshRenderer:
   m_ObjectHideFlags: 0

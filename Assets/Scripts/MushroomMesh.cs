@@ -7,6 +7,7 @@ public class MushroomMesh : MonoBehaviour
 {
 	public int capSubdivisions = 4;
 	public int axisSubdivisions = 12;
+	public int stipeSubdivisionDensity;
 	
 	private List<Vector3> vertices = new List<Vector3>();
 	private MeshFilter meshFilter;
@@ -21,7 +22,9 @@ public class MushroomMesh : MonoBehaviour
 		meshRenderer = gameObject.GetComponent<MeshRenderer>();
 
 		buildCap(x => -x*x, true);
+		//buildCap(x => Mathf.Sqrt(1.001f-x*x), true);
 		buildGills(0.35f, -0.2f);
+		buildStipe(y => new Vector3(0.2f*Mathf.Cos(1.5f*y), -0.5f*(y-1)*(y-1)+1.5f, 0.2f*Mathf.Sin(1.5f*y)), 1.5f);
 		
 		meshFilter.mesh.RecalculateNormals();  
     }
@@ -71,9 +74,18 @@ public class MushroomMesh : MonoBehaviour
 		}
 		if (includeGradient)
 		{
-			float direction = (Mathf.Atan2(curve(1.001f) - curve(0.999f), 0.002f) + Mathf.PI*2)%(Mathf.PI*2); //approximation of angle of tangent 
+			float deltaY = curve(1.001f) - curve(0.999f);
+			float direction;
+			if (deltaY == 0)
+			{
+				direction = 1.5f * Mathf.PI;
+			}
+			else
+			{
+				direction = (Mathf.Atan2(curve(1.001f) - curve(0.999f), 0.002f) + Mathf.PI * 2) % (Mathf.PI * 2); //approximation of angle of tangent 
+			}
 			Debug.Log(direction);
-			float radius = 1, y = curve(1);
+			float radius = 1, y = curve(1)-curve_0;
 			int i = capSubdivisions;
 			while (direction > Mathf.PI / 2)
 			{
@@ -120,5 +132,38 @@ public class MushroomMesh : MonoBehaviour
 				startVert, startVert-1, startVert - axisSubdivisions});
 		meshFilter.mesh.vertices = vertices.ToArray(); 
 		meshFilter.mesh.SetTriangles(tris.ToArray(), 1);
+	}
+
+	private void buildStipe(Func<float, Vector3> curve, float length = 1) //the stipe is the "stem" of the mushroom
+	{
+		List<int> tris = new List<int>();
+		float subdivisionAngle = Mathf.PI * 2f / axisSubdivisions; //angle between axis subdivisions
+		float subdivisionHeight = 1f / stipeSubdivisionDensity;
+		float y_0 = vertices[vertices.Count - 1].y;
+		float rad_0 = Mathf.Sqrt(vertices[vertices.Count-1].x * vertices[vertices.Count-1].x + vertices[vertices.Count-1].z * vertices[vertices.Count-1].z);
+		float radOffset = 1 - curve(0).y;
+		float xOffset = -curve(0).x;
+		float zOffset = -curve(0).z;
+		int subdivisions = (int)(length * stipeSubdivisionDensity + 0.5f);
+		for (int i = 1; i < subdivisions; i++)
+		{
+			Vector3 currentParams = curve(subdivisionHeight * i);
+			float radius = currentParams.y;
+			int startVert = vertices.Count;
+			vertices.Add(new Vector3(rad_0*(radius+radOffset) + currentParams.x + xOffset, y_0 - subdivisionHeight*i, currentParams.z + zOffset));
+			for (int j = 1; j < axisSubdivisions; j++)
+			{
+				float angle = subdivisionAngle * j; 
+				vertices.Add(new Vector3(rad_0 * (radius + radOffset) * Mathf.Cos(angle) + currentParams.x + xOffset, y_0-subdivisionHeight*i, rad_0 * (radius + radOffset) * Mathf.Sin(angle) + currentParams.z + zOffset));
+				int currentVert = startVert + j;
+				tris.AddRange(new int[] { currentVert - 1, currentVert - axisSubdivisions - 1, currentVert,
+					currentVert, currentVert - axisSubdivisions - 1, currentVert - axisSubdivisions});
+			}
+			tris.AddRange(new int[] { startVert + axisSubdivisions - 1, startVert - 1, startVert,
+				startVert, startVert-1, startVert - axisSubdivisions});
+			meshFilter.mesh.vertices = vertices.ToArray();
+			meshFilter.mesh.SetTriangles(tris.ToArray(), 2);
+
+		}
 	}
 }
