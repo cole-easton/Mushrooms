@@ -10,6 +10,7 @@ public class MushroomMesh : MonoBehaviour
 	public int stipeSubdivisionDensity;
 	
 	private List<Vector3> vertices = new List<Vector3>();
+	private List<Vector2> uVs = new List<Vector2>();
 	private MeshFilter meshFilter;
 	private MeshRenderer meshRenderer;
 
@@ -23,8 +24,8 @@ public class MushroomMesh : MonoBehaviour
 
 		buildCap(x => -x*x, true);
 		//buildCap(x => Mathf.Sqrt(1.001f-x*x), true);
-		buildGills(0.35f, -0.2f);
-		buildStipe(y => new Vector3(0.2f*Mathf.Cos(1.5f*y), -0.5f*(y-1)*(y-1)+1.5f, 0.2f*Mathf.Sin(1.5f*y)), 1.5f);
+		//buildGills(0.35f, -0.2f);
+		//buildStipe(y => new Vector3(0.2f*Mathf.Cos(1.5f*y), -0.5f*(y-1)*(y-1)+1.5f, 0.2f*Mathf.Sin(1.5f*y)), 1.5f);
 		
 		meshFilter.mesh.RecalculateNormals();  
     }
@@ -110,6 +111,26 @@ public class MushroomMesh : MonoBehaviour
 		}
 		meshFilter.mesh.vertices = vertices.ToArray();
 		meshFilter.mesh.SetTriangles(tris.ToArray(), 0);
+
+		//build UVs
+		//calculare arc length
+		float arcLength = 0;
+		for (int i = axisSubdivisions; i < vertices.Count; i += axisSubdivisions)
+		{
+			arcLength += Vector3.Distance(vertices[i], vertices[i - axisSubdivisions]);
+		}
+		uVs.Add(new Vector2(0.5f, 0.5f)); //center point of cap is in the middle
+		float radMultiplier = 0.49f / arcLength;
+		float currentRad = 0;
+		for (int i = 1; i < vertices.Count; i++)
+		{
+			int lastIndex = i < axisSubdivisions ? 0 : i - axisSubdivisions;
+			if ((i-1)%axisSubdivisions == 0)
+				currentRad += Vector3.Distance(vertices[i], vertices[lastIndex]);
+			Vector2 uv = new Vector2(vertices[i].x, vertices[i].z);
+			uVs.Add((uv.normalized * radMultiplier * currentRad) + new Vector2(0.5f, 0.5f));
+		}
+		meshFilter.mesh.uv = uVs.ToArray();
 	}
 
 	private void buildGills(float radius, float yOffset = 0)
