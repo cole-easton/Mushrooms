@@ -25,9 +25,7 @@ public class MushroomMesh : MonoBehaviour
 		buildCap(x => -x*x, true);
 		//buildCap(x => Mathf.Sqrt(1.001f-x*x), true);
 		buildGills(0.35f, -0.2f);
-		//buildStipe(y => new Vector3(0.2f*Mathf.Cos(1.5f*y), -0.5f*(y-1)*(y-1)+1.5f, 0.2f*Mathf.Sin(1.5f*y)), 1.5f);
-		
-		meshFilter.mesh.RecalculateNormals();  
+		buildStipe(y => new Vector3(0.2f*Mathf.Cos(1.5f*y), -0.5f*(y-1)*(y-1)+1.5f, 0.2f*Mathf.Sin(1.5f*y)), 1.5f);
     }
 
     // Update is called once per frame
@@ -85,7 +83,6 @@ public class MushroomMesh : MonoBehaviour
 			{
 				direction = (Mathf.Atan2(curve(1.001f) - curve(0.999f), 0.002f) + Mathf.PI * 2) % (Mathf.PI * 2); //approximation of angle of tangent 
 			}
-			Debug.Log(direction);
 			float radius = 1, y = curve(1)-curve_0;
 			int i = capSubdivisions;
 			while (direction > Mathf.PI / 2)
@@ -164,8 +161,22 @@ public class MushroomMesh : MonoBehaviour
 
 	}
 
+	/// <summary>
+	/// builds the stipe (stem) of the mushroom and calculates the normals of the entire mesh.  Do not use RecalculateNormals after runnung this method, 
+	/// as it will cause undesirable hard edges.
+	/// </summary>
+	/// <param name="curve">the curve, evaluated over [1, length] that defines the shape of the stipe. the x and z output control the position, 
+	/// and the y controls the radius (relative to the initial radius).  The function will be automatically translated so that curve(0) == new Vector3(0, 1, 0) </param>
+	/// <param name="length">The height if the stipe (not the arc length)</param>
 	private void buildStipe(Func<float, Vector3> curve, float length = 1) //the stipe is the "stem" of the mushroom
 	{
+		vertices.AddRange(vertices.GetRange(vertices.Count - axisSubdivisions, axisSubdivisions)); // duplicate ring so we can assign unique UV coords
+		int firstSeamIndex = vertices.Count - axisSubdivisions;
+		vertices.Add(vertices[firstSeamIndex]);
+		for (int j = 0; j <= axisSubdivisions; j++)
+		{
+			uVs.Add(new Vector2((float)j / axisSubdivisions, 0));
+		}
 		List<int> tris = new List<int>();
 		float subdivisionAngle = Mathf.PI * 2f / axisSubdivisions; //angle between axis subdivisions
 		float subdivisionHeight = 1f / stipeSubdivisionDensity;
@@ -181,19 +192,29 @@ public class MushroomMesh : MonoBehaviour
 			float radius = currentParams.y;
 			int startVert = vertices.Count;
 			vertices.Add(new Vector3(rad_0*(radius+radOffset) + currentParams.x + xOffset, y_0 - subdivisionHeight*i, currentParams.z + zOffset));
-			for (int j = 1; j < axisSubdivisions; j++)
+			uVs.Add(new Vector2(0, (float)i/(subdivisions-1)));
+			for (int j = 1; j < axisSubdivisions + 1; j++)
 			{
 				float angle = subdivisionAngle * j; 
 				vertices.Add(new Vector3(rad_0 * (radius + radOffset) * Mathf.Cos(angle) + currentParams.x + xOffset, y_0-subdivisionHeight*i, rad_0 * (radius + radOffset) * Mathf.Sin(angle) + currentParams.z + zOffset));
+				uVs.Add(new Vector2((float)j / axisSubdivisions, (float)i / (subdivisions-1)));
 				int currentVert = startVert + j;
-				tris.AddRange(new int[] { currentVert - 1, currentVert - axisSubdivisions - 1, currentVert,
-					currentVert, currentVert - axisSubdivisions - 1, currentVert - axisSubdivisions});
+				
+				tris.AddRange(new int[] { currentVert - 1, currentVert - axisSubdivisions - 2, currentVert,
+					currentVert, currentVert - axisSubdivisions - 2, currentVert - axisSubdivisions - 1});
 			}
-			tris.AddRange(new int[] { startVert + axisSubdivisions - 1, startVert - 1, startVert,
-				startVert, startVert-1, startVert - axisSubdivisions});
-			meshFilter.mesh.vertices = vertices.ToArray();
-			meshFilter.mesh.SetTriangles(tris.ToArray(), 2);
-
 		}
+		meshFilter.mesh.vertices = vertices.ToArray();
+		meshFilter.mesh.uv = uVs.ToArray();
+		meshFilter.mesh.SetTriangles(tris.ToArray(), 2);
+		meshFilter.mesh.RecalculateNormals();
+		//smooth out hard edge
+		Vector3[] normals = meshFilter.mesh.normals; // "To make changes to the normals it is important to copy the normals from the Mesh." --https://docs.unity3d.com/ScriptReference/Mesh-normals.html 11/2/2020
+		for (int i = firstSeamIndex; i + axisSubdivisions < vertices.Count; i += axisSubdivisions + 1)
+		{
+			Vector3 avgNorm = (normals[i] + normals[i + axisSubdivisions]) / 2f;
+			normals[i] = normals[i + axisSubdivisions] = avgNorm;
+		}
+		meshFilter.mesh.normals = normals;
 	}
 }
