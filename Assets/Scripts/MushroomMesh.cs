@@ -2,13 +2,33 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Random = UnityEngine.Random;
 
 public class MushroomMesh : MonoBehaviour
 {
 	public int capSubdivisions = 4;
 	public int axisSubdivisions = 12;
 	public int stipeSubdivisionDensity;
-	
+
+	//since Func cannot be shown in the inspector, all fields that control the shape/form of the mushroom are hidden from it
+	[HideInInspector]
+	public Func<float, float> capCurve = x => -x*x;
+	[HideInInspector]
+	public bool roundedCapEdge = true;
+	[HideInInspector]
+	public float gillOffset = -0.2f;
+	[HideInInspector]
+	public float gillInnerRadius = 0.35f;
+	[HideInInspector]
+	/// <summary>
+	/// the stipe curve, evaluated over [1, length] that defines the shape of the stipe. the x and z output control the position, 
+	/// and the y controls the radius (relative to the initial radius).  The function will be automatically translated so that curve(0) == new Vector3(0, 1, 0)
+	/// </summary>
+	public Func<float, Vector3> stipeCurve = y => new Vector3(0.2f * Mathf.Cos(1.5f * y), -0.5f * (y - 1) * (y - 1) + 1.5f, 0.2f * Mathf.Sin(1.5f * y));
+	[HideInInspector]
+	public float stipeLength = 1.5f;
+
+
 	private List<Vector3> vertices = new List<Vector3>();
 	private List<Vector2> uVs = new List<Vector2>();
 	private MeshFilter meshFilter;
@@ -17,15 +37,15 @@ public class MushroomMesh : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
+		RandomizeParams();
 		meshFilter = gameObject.GetComponent<MeshFilter>();
 		meshFilter.mesh.subMeshCount = 3;
 
 		meshRenderer = gameObject.GetComponent<MeshRenderer>();
 
-		buildCap(x => -x*x, true);
-		//buildCap(x => Mathf.Sqrt(1.001f-x*x), true);
-		buildGills(0.35f, -0.2f);
-		buildStipe(y => new Vector3(0.2f*Mathf.Cos(1.5f*y), -0.5f*(y-1)*(y-1)+1.5f, 0.2f*Mathf.Sin(1.5f*y)), 1.5f);
+		BuildCap(capCurve, roundedCapEdge);
+		BuildGills(gillInnerRadius, gillOffset);
+		BuildStipe(stipeCurve, stipeLength);
     }
 
     // Update is called once per frame
@@ -40,7 +60,7 @@ public class MushroomMesh : MonoBehaviour
 	/// </summary>
 	/// <param name="curve">The function, evaluated over [0, 1] that defines the shape of the cap.</param>
 	/// <param name = "includeGradient">Whether the edge of the cap should round around to the bottom</param>
-	private void buildCap(Func<float, float> curve, bool includeGradient = true)
+	private void BuildCap(Func<float, float> curve, bool includeGradient = true)
 	{
 		List<int> tris = new List<int>();
 		float curve_0 = curve(0);
@@ -130,7 +150,7 @@ public class MushroomMesh : MonoBehaviour
 		meshFilter.mesh.uv = uVs.ToArray();
 	}
 
-	private void buildGills(float radius, float yOffset = 0)
+	private void BuildGills(float radius, float yOffset = 0)
 	{
 		vertices.AddRange(vertices.GetRange(vertices.Count - axisSubdivisions, axisSubdivisions)); // duplicate ring for hard edge
 		float uvRadMultiplier = .5f/Mathf.Sqrt(vertices[vertices.Count - 1].x * vertices[vertices.Count - 1].x + vertices[vertices.Count - 1].z * vertices[vertices.Count - 1].z);
@@ -168,7 +188,7 @@ public class MushroomMesh : MonoBehaviour
 	/// <param name="curve">the curve, evaluated over [1, length] that defines the shape of the stipe. the x and z output control the position, 
 	/// and the y controls the radius (relative to the initial radius).  The function will be automatically translated so that curve(0) == new Vector3(0, 1, 0) </param>
 	/// <param name="length">The height if the stipe (not the arc length)</param>
-	private void buildStipe(Func<float, Vector3> curve, float length = 1) //the stipe is the "stem" of the mushroom
+	private void BuildStipe(Func<float, Vector3> curve, float length = 1) //the stipe is the "stem" of the mushroom
 	{
 		vertices.AddRange(vertices.GetRange(vertices.Count - axisSubdivisions, axisSubdivisions)); // duplicate ring so we can assign unique UV coords
 		int firstSeamIndex = vertices.Count - axisSubdivisions;
@@ -216,5 +236,52 @@ public class MushroomMesh : MonoBehaviour
 			normals[i] = normals[i + axisSubdivisions] = avgNorm;
 		}
 		meshFilter.mesh.normals = normals;
+	}
+
+	/// <summary>
+	/// Randomly generates new parameters for the shape/form of the mushroom using values and distrubutions according 
+	/// to the author's (Cole R. Easton) subjective aesthetic opinions
+	/// </summary>
+	public void RandomizeParams()
+	{
+		float rng = Random.value;
+		if (rng < 0.25f) //concave cap
+		{
+			Func<float, float>[] funcs = new Func<float, float>[] {x=>0.5f*x*x, x=>Mathf.Sqrt(x*x+1), x=>-Mathf.Sqrt(2-x*x),
+				x =>Mathf.Pow(x, 4),  x=>0.25f*Mathf.Pow(x, 4), x => 1.92901f*x*x*x - 2.31481f*x*x - 0.123457f };
+			capCurve = funcs[Random.Range(0, funcs.Length)];
+			roundedCapEdge = false;
+			float dydx = (capCurve(1.001f) - capCurve(0.999f)) / 0.002f;
+			gillInnerRadius = Random.Range(0.1f, 0.5f);
+			float minOffset = -dydx * (1 - gillInnerRadius);
+			gillOffset = Random.Range(minOffset, minOffset * 1.2f);
+		}
+		else //convex cap
+		{
+			float quadraticCoeff = -Gaussian(.8f, 0.2f);
+			float quarticCoeff = -Mathf.Pow(2, Random.Range(-2f, 0f));
+			float circleRad = Random.Range(1f, 2.5f);
+			float bellSteepness = Random.Range(0.5f, 4f);
+			float cosScalar = Random.Range(0.8f, Mathf.PI);
+			float secCoeff = Random.Range(0.5f, 1.2f);
+			Func<float, float>[] funcs = new Func<float, float>[] {x=>quadraticCoeff*x*x,  x=>quarticCoeff*Mathf.Pow(x, 4), x=>Mathf.Sqrt(circleRad-x*x), 
+				  x => Mathf.Exp(-bellSteepness*x*x), x => Mathf.Cos(cosScalar*x), x => -secCoeff/Mathf.Cos(x) };
+			capCurve = funcs[Random.Range(0, funcs.Length)];
+			roundedCapEdge = Random.value < 0.8f;
+			gillInnerRadius = Mathf.Pow(Gaussian(0.59f, 0.12f), 2);
+			if (gillInnerRadius < 0.05f)
+				gillInnerRadius = 0.05f;
+			if (gillInnerRadius > 0.95f)
+				gillInnerRadius = 0.95f;
+			gillOffset = Random.Range(-0.4f, 0.4f);
+		}
+	}
+
+	private float Gaussian(float mean, float stdDev)
+	{
+		float val1 = Random.Range(0f, 1f);
+		float val2 = Random.Range(0f, 1f);
+		float gaussValue = Mathf.Sqrt(-2.0f * Mathf.Log(val1)) * Mathf.Sin(2.0f * Mathf.PI * val2);
+		return mean + stdDev * gaussValue;
 	}
 }
