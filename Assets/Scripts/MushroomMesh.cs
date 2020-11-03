@@ -46,6 +46,7 @@ public class MushroomMesh : MonoBehaviour
 		BuildCap(capCurve, roundedCapEdge);
 		BuildGills(gillInnerRadius, gillOffset);
 		BuildStipe(stipeCurve, stipeLength);
+		CorrectPosition();
     }
 
     // Update is called once per frame
@@ -239,6 +240,15 @@ public class MushroomMesh : MonoBehaviour
 	}
 
 	/// <summary>
+	/// corrects the position of the mushroom so that that bottom of the stipe touches the ground
+	/// </summary>
+	private void CorrectPosition()
+	{
+		float height = capCurve(0) - capCurve(1) - gillOffset + stipeLength;
+		transform.Translate(height * Vector3.up);
+	}
+
+	/// <summary>
 	/// Randomly generates new parameters for the shape/form of the mushroom using values and distrubutions according 
 	/// to the author's (Cole R. Easton) subjective aesthetic opinions
 	/// </summary>
@@ -274,6 +284,29 @@ public class MushroomMesh : MonoBehaviour
 			if (gillInnerRadius > 0.95f)
 				gillInnerRadius = 0.95f;
 			gillOffset = Random.Range(-0.4f, 0.4f);
+			if (gillOffset >= capCurve(gillInnerRadius)-capCurve(1)) //so we don't get stipes sticking throught the cap
+			{
+				gillOffset = capCurve(gillInnerRadius)-capCurve(1) - 0.01f;
+			}
+		}
+		stipeLength = Gaussian(1.5f, 0.5f);
+		float cosOffset = Random.Range(0, 2 * Mathf.PI);
+		float sinOfffset = Random.Range(0, 2 * Mathf.PI);
+		float val = Random.value;
+		if (val < 0.4f) //convex
+		{
+			float fatSpot = Random.Range(0.5f, 0.75f); // 2/3 in default curve
+			stipeCurve = y => new Vector3(0.2f * Mathf.Cos(1.5f * y + cosOffset), -0.5f * Mathf.Pow(y - stipeLength * fatSpot, 2f) + 1.5f, 0.2f * Mathf.Sin(1.5f * y + sinOfffset));
+		}
+		else if (val < 0.7) //concave
+		{
+			float verticalOffset = Random.Range(0.25f, 0.5f); //.5 is symmetrical; .25 is quite bottom heavy
+			float subtleness = .1f * Mathf.Pow(2f, Random.Range(-2f, 1f));
+			stipeCurve = y => new Vector3(0.2f * Mathf.Cos(1.5f * y + cosOffset), Mathf.Pow(y/stipeLength - verticalOffset, 4f) + subtleness, 0.2f * Mathf.Sin(1.5f * y + sinOfffset));
+		}
+		else 
+		{
+			stipeCurve = y => new Vector3(0.2f * Mathf.Cos(1.5f * y + cosOffset), 1f, 0.2f * Mathf.Sin(1.5f * y + sinOfffset));
 		}
 	}
 
