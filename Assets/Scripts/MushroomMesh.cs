@@ -47,7 +47,9 @@ public class MushroomMesh : MonoBehaviour
 		BuildGills(gillInnerRadius, gillOffset);
 		BuildStipe(stipeCurve, stipeLength);
 		CorrectPosition();
-    }
+
+		GenerateMaterial(256, 256);
+	}
 
     // Update is called once per frame
     void Update()
@@ -317,4 +319,112 @@ public class MushroomMesh : MonoBehaviour
 		float gaussValue = Mathf.Sqrt(-2.0f * Mathf.Log(val1)) * Mathf.Sin(2.0f * Mathf.PI * val2);
 		return mean + stdDev * gaussValue;
 	}
+
+	private void GenerateMaterial(int width, int height)
+	{
+		Texture2D texture = new Texture2D(width, height, TextureFormat.RGB24, true);
+		Color[] pixels = new Color[width*height];
+		float[] heights = GetWorley(width, height, width / 8);
+		for (int i = 0; i < height; i++)
+		{
+			for (int j = 0; j < width; j++)
+			{
+				pixels[i * width + j] = new Color(heights[i*width + j], heights[i * width + j], heights[i * width + j]);
+				if (heights[i * width + j] > 1)
+				{
+					Debug.Log(heights[i * width + j]);
+					Debug.Log($"({i}, {j})");
+					break;
+				}
+				if (heights[i*width + j] == 0 )
+				{
+					pixels[i * width + j] = Color.red;
+				}
+			}
+		}
+		texture.SetPixels(pixels);
+		texture.Apply();
+		GetComponent<Renderer>().materials[0].mainTexture = texture;
+	}
+
+	/// <summary>
+	/// returns a 1D array with array.Length =  height*width representing a 2D heightmap of Worley noise
+	/// </summary>
+	/// <param name="height">the height of the noise image to produce in pixels</param>
+	/// <param name="width">the width of the noise image to produce in pixels</param>
+	/// <param name="cellSize">the hight and width of each Voronoi cell in pixels</param>
+	/// <returns></returns>
+	private float[] GetWorley(int height, int width, int cellSize)
+	{
+		Vector2Int[] points = new Vector2Int[(height/cellSize)*(width/cellSize)];
+		int cellsAcross = width / cellSize; //frequent calculation, better to store
+		float[] noise = new float[height * width];
+		for (int i = 0; i < height; i += cellSize)
+		{
+			for (int j = 0; j < width; j += cellSize)
+			{
+				points[(i/cellSize) * cellsAcross + j/cellSize] = new Vector2Int(Random.Range(j, j + cellSize), Random.Range(i, i + cellSize));
+			}
+		}
+		for (int i = 0; i < height; i++)
+		{
+			for (int j = 0; j < width; j++)
+			{
+				Vector2Int currentPoint = new Vector2Int(i, j);
+				int cellIndex = (i / cellSize) * cellsAcross + j / cellSize;
+				int closestCell = cellIndex;
+				int minDistance = (currentPoint - points[cellIndex]).sqrMagnitude;
+				if (Mathf.Sqrt(minDistance) > cellSize*1.414f)
+				{
+					Debug.Log(currentPoint);
+					Debug.Log(points[cellIndex]);
+					break;
+				}
+				if (cellIndex - cellsAcross - 1 >= 0 && (currentPoint - points[cellIndex - cellsAcross - 1]).sqrMagnitude < minDistance)
+				{
+					minDistance = (currentPoint - points[cellIndex - cellsAcross - 1]).sqrMagnitude;
+					closestCell = cellIndex - cellsAcross - 1;
+				}
+				if (cellIndex - cellsAcross >= 0 && (currentPoint - points[cellIndex - cellsAcross]).sqrMagnitude < minDistance)
+				{
+					minDistance = (currentPoint - points[cellIndex - cellsAcross]).sqrMagnitude;
+					closestCell = cellIndex - cellsAcross;
+				}
+				if (cellIndex - cellsAcross + 1 >= 0 && (currentPoint - points[cellIndex - cellsAcross + 1]).sqrMagnitude < minDistance)
+				{
+					minDistance = (currentPoint - points[cellIndex - cellsAcross + 1]).sqrMagnitude;
+					closestCell = cellIndex - cellsAcross + 1;
+				}
+				if (cellIndex - 1 >= 0 && (currentPoint - points[cellIndex - 1]).sqrMagnitude < minDistance)
+				{
+					minDistance = (currentPoint - points[cellIndex - 1]).sqrMagnitude;
+					closestCell = cellIndex - 1;
+				}
+				if (cellIndex + 1 < points.Length && (currentPoint - points[cellIndex + 1]).sqrMagnitude < minDistance)
+				{
+					minDistance = (currentPoint - points[cellIndex + 1]).sqrMagnitude;
+					closestCell = cellIndex + 1;
+				}
+				if (cellIndex + cellsAcross - 1 < points.Length && (currentPoint - points[cellIndex + cellsAcross - 1]).sqrMagnitude < minDistance)
+				{
+					minDistance = (currentPoint - points[cellIndex + cellsAcross - 1]).sqrMagnitude;
+					closestCell = cellIndex + cellsAcross - 1;
+				}
+				if (cellIndex + cellsAcross < points.Length && (currentPoint - points[cellIndex + cellsAcross]).sqrMagnitude < minDistance)
+				{
+					minDistance = (currentPoint - points[cellIndex + cellsAcross]).sqrMagnitude;
+					closestCell = cellIndex + cellsAcross;
+				}
+				if (cellIndex + cellsAcross + 1 < points.Length && (currentPoint - points[cellIndex + cellsAcross + 1]).sqrMagnitude < minDistance)
+				{
+					minDistance = (currentPoint - points[cellIndex + cellsAcross + 1]).sqrMagnitude;
+					closestCell = cellIndex + cellsAcross + 1;
+				}
+				noise[i * width + j] = (currentPoint - points[closestCell]).magnitude / (cellSize*1.414f);
+			}
+		}
+		return noise;
+	}
 }
+
+
