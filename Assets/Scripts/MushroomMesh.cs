@@ -48,7 +48,7 @@ public class MushroomMesh : MonoBehaviour
 		BuildStipe(stipeCurve, stipeLength);
 		CorrectPosition();
 
-		GenerateMaterial(256, 256);
+		GenerateMaterial(1024, 1024);
 	}
 
     // Update is called once per frame
@@ -324,18 +324,12 @@ public class MushroomMesh : MonoBehaviour
 	{
 		Texture2D texture = new Texture2D(width, height, TextureFormat.RGB24, true);
 		Color[] pixels = new Color[width*height];
-		float[] heights = GetWorley(width, height, width / 8);
+		float[] heights = GetWorley(width, height, width / 4);
 		for (int i = 0; i < height; i++)
 		{
 			for (int j = 0; j < width; j++)
 			{
-				pixels[i * width + j] = new Color(heights[i*width + j], heights[i * width + j], heights[i * width + j]);
-				if (heights[i * width + j] > 1)
-				{
-					Debug.Log(heights[i * width + j]);
-					Debug.Log($"({i}, {j})");
-					break;
-				}
+				pixels[i * width + j] = new Color(heights[i*width + j], heights[(i *2 * width + j * 2)%heights.Length], heights[i * width + j]*heights[i*width + j]);
 				if (heights[i*width + j] == 0 )
 				{
 					pixels[i * width + j] = Color.red;
@@ -356,30 +350,24 @@ public class MushroomMesh : MonoBehaviour
 	/// <returns></returns>
 	private float[] GetWorley(int height, int width, int cellSize)
 	{
-		Vector2Int[] points = new Vector2Int[(height/cellSize)*(width/cellSize)];
-		int cellsAcross = width / cellSize; //frequent calculation, better to store
+		Vector2Int[] points = new Vector2Int[(height/cellSize + 2)*(width/cellSize + 2)]; //overlap one tile on each side
+		int cellsAcross = width / cellSize + 2; //frequent calculation, better to store
 		float[] noise = new float[height * width];
-		for (int i = 0; i < height; i += cellSize)
+		for (int i = 0; i < height + 2*cellSize; i += cellSize)
 		{
-			for (int j = 0; j < width; j += cellSize)
+			for (int j = 0; j < width + 2*cellSize; j += cellSize)
 			{
 				points[(i/cellSize) * cellsAcross + j/cellSize] = new Vector2Int(Random.Range(j, j + cellSize), Random.Range(i, i + cellSize));
 			}
 		}
-		for (int i = 0; i < height; i++)
+		for (int i = cellSize; i < height + cellSize; i++)
 		{
-			for (int j = 0; j < width; j++)
+			for (int j = cellSize; j < width + cellSize; j++)
 			{
-				Vector2Int currentPoint = new Vector2Int(i, j);
+				Vector2Int currentPoint = new Vector2Int(j, i);
 				int cellIndex = (i / cellSize) * cellsAcross + j / cellSize;
 				int closestCell = cellIndex;
 				int minDistance = (currentPoint - points[cellIndex]).sqrMagnitude;
-				if (Mathf.Sqrt(minDistance) > cellSize*1.414f)
-				{
-					Debug.Log(currentPoint);
-					Debug.Log(points[cellIndex]);
-					break;
-				}
 				if (cellIndex - cellsAcross - 1 >= 0 && (currentPoint - points[cellIndex - cellsAcross - 1]).sqrMagnitude < minDistance)
 				{
 					minDistance = (currentPoint - points[cellIndex - cellsAcross - 1]).sqrMagnitude;
@@ -420,7 +408,7 @@ public class MushroomMesh : MonoBehaviour
 					minDistance = (currentPoint - points[cellIndex + cellsAcross + 1]).sqrMagnitude;
 					closestCell = cellIndex + cellsAcross + 1;
 				}
-				noise[i * width + j] = (currentPoint - points[closestCell]).magnitude / (cellSize*1.414f);
+				noise[(i-cellSize) * width + j-cellSize] = (currentPoint - points[closestCell]).magnitude / (cellSize*1.4143f);
 			}
 		}
 		return noise;
