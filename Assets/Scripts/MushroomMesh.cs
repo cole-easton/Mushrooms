@@ -325,15 +325,18 @@ public class MushroomMesh : MonoBehaviour
 		Texture2D texture = new Texture2D(width, height, TextureFormat.RGB24, true);
 		Color[] pixels = new Color[width*height];
 		float[] heights = GetWorley(width, height, width / 4);
+		float channelOffset = 3 * Random.value;
+		float[] channels = new float[3]; //just make the array here so the garbag ecollector doesnt have to do so much
 		for (int i = 0; i < height; i++)
 		{
 			for (int j = 0; j < width; j++)
 			{
-				pixels[i * width + j] = new Color(heights[i*width + j], heights[(i *2 * width + j * 2)%heights.Length], heights[i * width + j]*heights[i*width + j]);
-				if (heights[i*width + j] == 0 )
-				{
-					pixels[i * width + j] = Color.red;
-				}
+				channels[0] = heights[i * width + j];
+				channels[1] = heights[(i * 2 * width + j * 2) % heights.Length];
+				channels[2] = heights[(i * width + j + heights.Length / 4) % heights.Length];
+				pixels[i * width + j] = new Color(channelOffset%1*channels[((int)channelOffset)%3]+(1-channelOffset%1)*channels[(1 + (int)channelOffset) % 3], 
+					channelOffset%1 * channels[(1 + (int)channelOffset) % 3] + (1 - channelOffset%1) * channels[(2 + (int)channelOffset) % 3],
+					channelOffset%1 * channels[(2 + (int)channelOffset) % 3] + (1 - channelOffset%1) * channels[((int)channelOffset) % 3]);
 			}
 		}
 		texture.SetPixels(pixels);
@@ -357,7 +360,37 @@ public class MushroomMesh : MonoBehaviour
 		{
 			for (int j = 0; j < width + 2*cellSize; j += cellSize)
 			{
-				points[(i/cellSize) * cellsAcross + j/cellSize] = new Vector2Int(Random.Range(j, j + cellSize), Random.Range(i, i + cellSize));
+				bool defaultCase = false;
+				if (i==j && i >= height)
+				{
+					//this works iff height == width
+					points[(i / cellSize) * cellsAcross + j / cellSize] = points[(i / cellSize) * cellsAcross + j / cellSize - (cellsAcross+1)*(cellsAcross-2)]; 
+;				}
+				else if (i == width-j && i > height)
+				{
+					// "
+					points[(i / cellSize) * cellsAcross + j / cellSize] = points[(i / cellSize) * cellsAcross + j / cellSize - (cellsAcross-1)*(cellsAcross-2)];
+				}
+				else if (i >= height)
+				{
+					points[(i / cellSize) * cellsAcross + j / cellSize] = points[(i / cellSize) * cellsAcross + j / cellSize - cellsAcross * (cellsAcross - 2)];
+				}
+				else if (j >= width)
+				{
+					points[(i / cellSize) * cellsAcross + j / cellSize] = points[(i / cellSize) * cellsAcross + j / cellSize - cellsAcross + 2];
+				}
+				else
+				{
+					defaultCase = true;
+					points[(i / cellSize) * cellsAcross + j / cellSize] = new Vector2Int(Random.Range(j, j + cellSize), Random.Range(i, i + cellSize));
+				}
+				if (!defaultCase)
+				{
+					Vector2Int current = points[(i / cellSize) * cellsAcross + j / cellSize];
+					current.x = j + current.x % cellSize;
+					current.y = i + current.y % cellSize;
+					points[(i / cellSize) * cellsAcross + j / cellSize] = current;
+				}
 			}
 		}
 		for (int i = cellSize; i < height + cellSize; i++)
