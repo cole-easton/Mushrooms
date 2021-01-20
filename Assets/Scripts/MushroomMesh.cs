@@ -4,11 +4,14 @@ using System.Collections.Generic;
 using UnityEngine;
 using Random = UnityEngine.Random;
 
+
 public class MushroomMesh : MonoBehaviour
 {
 	public int capSubdivisions = 4;
 	public int axisSubdivisions = 12;
 	public int stipeSubdivisionDensity;
+
+	public Color[] palette;
 
 	//since Func cannot be shown in the inspector, all fields that control the shape/form of the mushroom are hidden from it
 	[HideInInspector]
@@ -48,7 +51,7 @@ public class MushroomMesh : MonoBehaviour
 		BuildStipe(stipeCurve, stipeLength);
 		CorrectPosition();
 
-		GenerateMaterial(1024, 1024);
+		GenerateMaterial(256, 256);
 	}
 
     // Update is called once per frame
@@ -323,29 +326,116 @@ public class MushroomMesh : MonoBehaviour
 	private void GenerateMaterial(int width, int height)
 	{
 		Texture2D texture = new Texture2D(width, height, TextureFormat.RGB24, true);
+		Texture2D heightMap = new Texture2D(width, height);
+		Texture2D normalMap = new Texture2D(width, height, TextureFormat.ARGB32, true);
 		Color[] pixels = new Color[width*height];
-		float[] heights = GetWorley(width, height, width / 4);
+		Color[] heightPixels = new Color[width * height];
+		float[] ch0Worley = GetWorley(width, height, width / 4);
+		float[] ch0Perlin = GetPerlin(width, 2, 6);
+		float[] ch0Gradient = GetRandomGradient(width);
+		float[] ch1Worley = GetWorley(width, height, width / 4);
+		float[] ch1Perlin = GetPerlin(width, 2, 6);
+		float[] ch1Gradient = GetRandomGradient(width);
+		float[] ch2Worley = GetWorley(width, height, width / 4);
+		float[] ch2Perlin = GetPerlin(width, 2, 6);
+		float[] ch2Gradient = GetRandomGradient(width);
+		float[] heightsPerlin = GetPerlin(width, 3, 7); //for normals
+		float[] heights = new float[width * height];
+
 		float channelOffset = 3 * Random.value;
-		float[] channels = new float[3]; //just make the array here so the garbag ecollector doesnt have to do so much
+		float[] channels = new float[3]; //just make the array here so the garbage collector doesnt have to do so much
+		Vector3[] channelPoints = new Vector3[Random.Range(1, 5)];
+		palette = new Color[channelPoints.Length];
+		for (int k = 0; k < channelPoints.Length; k++)
+		{
+			channelPoints[k] = new Vector3(Random.value, Random.value, Random.value);
+			palette[k] = new Color(channelOffset % 1 * channelPoints[k][((int)channelOffset) % 3] + (1 - channelOffset % 1) * channelPoints[k][(1 + (int)channelOffset) % 3],
+					channelOffset % 1 * channelPoints[k][(1 + (int)channelOffset) % 3] + (1 - channelOffset % 1) * channelPoints[k][(2 + (int)channelOffset) % 3],
+					channelOffset % 1 * channelPoints[k][(2 + (int)channelOffset) % 3] + (1 - channelOffset % 1) * channelPoints[k][((int)channelOffset) % 3]);
+		}
+		float[] ch0Weights = GetWeights(3);
+		float[] ch1Weights = GetWeights(3);
+		float[] ch2Weights = GetWeights(3);
 		for (int i = 0; i < height; i++)
 		{
 			for (int j = 0; j < width; j++)
 			{
-				channels[0] = heights[i * width + j];
-				channels[1] = heights[(i * 2 * width + j * 2) % heights.Length];
-				channels[2] = heights[(i * width + j + heights.Length / 4) % heights.Length];
+				channels[0] = ch0Weights[0]*ch0Perlin[i * width + j] 
+					+ ch0Weights[1] *(1 - ch0Worley[i * width + j]) 
+					+ ch0Weights[2] * ch0Gradient[i * width + j];
+				channels[1] = ch1Weights[0] * ch1Perlin[i * width + j]
+					+ ch1Weights[1] * (1 - ch1Worley[i * width + j])
+					+ ch1Weights[2] * ch1Gradient[i * width + j];
+				channels[2] = ch2Weights[0] * ch2Perlin[i * width + j]
+					+ ch2Weights[1] * (1 - ch2Worley[i * width + j])
+					+ ch2Weights[2] * ch2Gradient[i * width + j];
+				//Vector3 force;
+				//Vector3 velocity = Vector3.zero;
+				//for (int l = 0; l < 50; l++)
+				//{
+				//	for (int k = 0; k < channelPoints.Length; k++)
+				//	{
+				//		Vector3 displacement = channelPoints[k] - new Vector3(channels[0], channels[1], channels[2]);
+				//		force = 0.002f * displacement / displacement.sqrMagnitude;
+				//		velocity += force;
+				//		channels[0] += velocity.x;
+				//		channels[1] += velocity.y;
+				//		channels[2] += velocity.z;
+				//		channels[0] = Mathf.Clamp01(channels[0]);
+				//		channels[1] = Mathf.Clamp01(channels[1]);
+				//		channels[2] = Mathf.Clamp01(channels[2]);
+
+				//	}
+				//}
+				float maxSqrDistance = (new Vector3(channels[0], channels[1], channels[2]) - channelPoints[0]).sqrMagnitude;
+				int closestColor = 0;
+				for (int k = 1; k < channelPoints.Length; k++)
+				{
+					float sqrMag = (new Vector3(channels[0], channels[1], channels[2]) - channelPoints[k]).sqrMagnitude;
+					if (sqrMag > maxSqrDistance)
+					{
+						maxSqrDistance = sqrMag;
+						closestColor = k;
+					}
+				}
+				float secondBiggest = float.MinValue;
+				for (int k = 0; k < channelPoints.Length; k++)
+				{
+					float sqrMag = (new Vector3(channels[0], channels[1], channels[2]) - channelPoints[k]).sqrMagnitude;
+					if (sqrMag > secondBiggest && Math.Abs(sqrMag-maxSqrDistance) < 0.0001f )
+					{
+						secondBiggest = sqrMag;
+					}
+				}
+				float weight = channelPoints.Length > 1 ? maxSqrDistance - secondBiggest : 0.5f;
+				channels[0] = weight * channelPoints[closestColor].x + (1 - weight) * channels[0];
+				channels[1] = weight * channelPoints[closestColor].y + (1 - weight) * channels[1];
+				channels[2] = weight * channelPoints[closestColor].z + (1 - weight) * channels[2];
+
 				pixels[i * width + j] = new Color(channelOffset%1*channels[((int)channelOffset)%3]+(1-channelOffset%1)*channels[(1 + (int)channelOffset) % 3], 
 					channelOffset%1 * channels[(1 + (int)channelOffset) % 3] + (1 - channelOffset%1) * channels[(2 + (int)channelOffset) % 3],
 					channelOffset%1 * channels[(2 + (int)channelOffset) % 3] + (1 - channelOffset%1) * channels[((int)channelOffset) % 3]);
+
+				heights[i * width + j] = heightsPerlin[i * width + j]; //heights look unnecessary, but we will eventually add stuff
+				heightPixels[i * width + j] = new Color(heights[i * width + j], heights[i * width + j], heights[i * width + j]); 
 			}
 		}
 		texture.SetPixels(pixels);
 		texture.Apply();
+		heightMap.SetPixels(heightPixels);
+		heightMap.Apply();
+		normalMap.SetPixels(GetNormals(heights, width));
+		normalMap.Apply();
+
 		GetComponent<Renderer>().materials[0].mainTexture = texture;
+		GetComponent<Renderer>().materials[0].EnableKeyword("_PARALLAXMAP");
+		GetComponent<Renderer>().materials[0].EnableKeyword("_NORMALMAP");
+		GetComponent<Renderer>().materials[0].SetTexture("_ParallaxMap", heightMap);
+		GetComponent<Renderer>().materials[0].SetTexture("_BumpMap", normalMap);
 	}
 
 	/// <summary>
-	/// returns a 1D array with array.Length =  height*width representing a 2D heightmap of Worley noise
+	/// returns a 1D array with array.Length =  height*width representing a 2D heightmap of tilable Worley noise
 	/// </summary>
 	/// <param name="height">the height of the noise image to produce in pixels</param>
 	/// <param name="width">the width of the noise image to produce in pixels</param>
@@ -445,6 +535,102 @@ public class MushroomMesh : MonoBehaviour
 			}
 		}
 		return noise;
+	}
+
+	private float[] GetPerlin(int size, float initialScalar, int numOctaves, float scalar = 2)
+	{
+		float[] perlin = new float[size * size];
+		float offsetX = Random.value;
+		float offsetY = Random.value;
+		float divisor = 0;
+		float multiplier = initialScalar;
+		for (int k = 0; k < numOctaves; k++)
+		{
+			divisor += initialScalar /  multiplier;
+			multiplier *= scalar;
+		}
+		for (int i = 0; i < size; i++)
+		{
+			for (int j = 0; j < size; j++)
+			{
+				multiplier = initialScalar;
+				for (int k = 0; k < numOctaves; k++)
+				{
+					perlin[i * size + j] += Mathf.PerlinNoise(multiplier * i / size, multiplier * j / size)*initialScalar/multiplier;
+					multiplier *= scalar;
+				}
+				perlin[i * size + j] /= divisor;
+			}
+		}
+		return perlin;
+	}
+
+	/// <summary>
+	/// returns a size*size length radial gradient heightmap with a random inner and outer value and a random curve
+	/// </summary>
+	/// <param name="size">the edge length of the grid that the returned aray represents</param>
+	/// <returns>a size*size length radial gradient heightmap with a random inner and outer value and a random curve</returns>
+	private float[] GetRandomGradient(int size)
+	{
+		float inner = Random.value;
+		float outer = Random.value;
+		float[] gradient = new float[size * size];
+		int length = gradient.Length; //slightly reduce function call overhead by storing length here 
+		int x, y; //declare here so we dont have to keep finding and abondoning memory
+		for (int i = 0; i < length; i++)
+		{
+			x = i % size - size / 2;
+			y = i / size - size / 2;
+			float distance = Mathf.Sqrt(x * x + y * y)*2/size;
+			gradient[i] = distance * outer + (1 - distance) * inner;
+		}
+		return gradient;
+	}
+	private Color[] GetNormals(float[] heights, int width)
+	{
+		Color[] colors = new Color[heights.Length];
+		for (int i = 0; i < heights.Length; i++)
+		{
+			float right = heights[(i + 1) % heights.Length] - heights[(i - 1 + heights.Length) % heights.Length];
+			float down = heights[(i + width) % heights.Length] - heights[(i - width + heights.Length) % heights.Length];
+			float downRight = heights[(i + width + 1) % heights.Length] - heights[(i - width - 1 + heights.Length) % heights.Length];
+			float downLeft = heights[(i + width - 1) % heights.Length] - heights[(i - width + 1 + heights.Length) % heights.Length];
+			Vector3 dir = new Vector3(right + downRight * .707f - downLeft * .707f, down + downRight * 0.707f + downRight * .707f, 0) * 3;
+			dir.z = 1 - dir.x * dir.x - dir.y*dir.y;
+			dir.Normalize();
+			colors[i] = new Color(0.5f+0.5f*dir.x, 0.5f+0.5f*dir.y, dir.z);
+			if (Random.value < 0.05f)
+				Debug.Log(dir.z);
+		}
+		return colors;
+	}
+
+	/// <summary>
+	/// returns an array of num weights whose sum is 1, randomly generated with a uniform distribution
+	/// </summary>
+	/// <param name="num">the number of weights to generate</param>
+	/// <returns>an array with length num whose elements add to 1</returns>
+	private float[] GetWeights(int num)
+	{
+		List<float> boundries = new List<float>(num);
+		for (int i = 0; i < num; i++)
+		{
+			boundries.Add(Random.value);
+		}
+		boundries.Sort();
+		float[] weights = new float[num];
+		for (int i = 0; i < num; i++)
+		{
+			if (i == num - 1)
+			{
+				weights[i] = boundries[0] + 1 - boundries[i];
+			}
+			else
+			{
+				weights[i] = boundries[i + 1] - boundries[i];
+			}
+		}
+		return weights;
 	}
 }
 
