@@ -11,7 +11,36 @@ public class MushroomMesh : MonoBehaviour
 	public int axisSubdivisions = 12;
 	public int stipeSubdivisionDensity;
 
-	public Color[] palette;
+	[SerializeField]
+	/// <summary>
+	/// sets or gets the color palette.  All color alpha will be automatically assigned to 1.
+	/// NOTE: THE ARRAY IS COPIED, NOT PASSED BY REFERENCE
+	/// </summary>
+	public Color[] Palette
+	{
+		set
+		{
+			paletteVects = new Vector3[value.Length];
+			for (int i = 0; i < value.Length; i++)
+			{
+				paletteVects[i].x = value[i].r;
+				paletteVects[i].y = value[i].g;
+				paletteVects[i].z = value[i].b;
+			}
+		}
+		get
+		{
+			Color[] value = new Color[paletteVects.Length];
+			for (int i = 0; i < value.Length; i++)
+			{
+				value[i].r = paletteVects[i].x;
+				value[i].g = paletteVects[i].y;
+				value[i].b = paletteVects[i].z;
+			}
+			return value;
+		}
+	}
+	private Vector3[] paletteVects;
 
 	//since Func cannot be shown in the inspector, all fields that control the shape/form of the mushroom are hidden from it
 	[HideInInspector]
@@ -51,6 +80,7 @@ public class MushroomMesh : MonoBehaviour
 		BuildStipe(stipeCurve, stipeLength);
 		CorrectPosition();
 
+		RandomizePalette();
 		GenerateMaterial(256, 256);
 	}
 
@@ -257,13 +287,14 @@ public class MushroomMesh : MonoBehaviour
 	/// Randomly generates new parameters for the shape/form of the mushroom using values and distrubutions according 
 	/// to the author's (Cole R. Easton) subjective aesthetic opinions
 	/// </summary>
-	public void RandomizeParams()
+	/// <param name="allowInverted">whether or not inverted / concave caps are permitted</param>
+	public void RandomizeParams(bool allowInverted = true)
 	{
 		float rng = Random.value;
-		if (rng < 0.25f) //concave cap
+		if (allowInverted && rng < 0.25f) //concave cap
 		{
 			Func<float, float>[] funcs = new Func<float, float>[] {x=>0.5f*x*x, x=>Mathf.Sqrt(x*x+1), x=>-Mathf.Sqrt(2-x*x),
-				x =>Mathf.Pow(x, 4),  x=>0.25f*Mathf.Pow(x, 4), x => 1.92901f*x*x*x - 2.31481f*x*x - 0.123457f };
+			  x=>0.25f*Mathf.Pow(x, 4), x => 1.92901f*x*x*x - 2.31481f*x*x - 0.123457f };
 			capCurve = funcs[Random.Range(0, funcs.Length)];
 			roundedCapEdge = false;
 			float dydx = (capCurve(1.001f) - capCurve(0.999f)) / 0.002f;
@@ -279,11 +310,12 @@ public class MushroomMesh : MonoBehaviour
 			float bellSteepness = Random.Range(0.5f, 4f);
 			float cosScalar = Random.Range(0.8f, Mathf.PI);
 			float secCoeff = Random.Range(0.5f, 1.2f);
+			float pointyCoeff = Random.Range(0.25f, 0.75f);
 			Func<float, float>[] funcs = new Func<float, float>[] {x=>quadraticCoeff*x*x,  x=>quarticCoeff*Mathf.Pow(x, 4), x=>Mathf.Sqrt(circleRad-x*x), 
-				  x => Mathf.Exp(-bellSteepness*x*x), x => Mathf.Cos(cosScalar*x), x => -secCoeff/Mathf.Cos(x) };
+				  x => Mathf.Exp(-bellSteepness*x*x), x => Mathf.Cos(cosScalar*x), x => -secCoeff/Mathf.Cos(x), x => pointyCoeff*(-x-Mathf.Pow(x, 4)) };
 			capCurve = funcs[Random.Range(0, funcs.Length)];
 			roundedCapEdge = Random.value < 0.8f;
-			gillInnerRadius = Mathf.Pow(Gaussian(0.59f, 0.12f), 2);
+			gillInnerRadius = Gaussian(0.2f, 0.03f);
 			if (gillInnerRadius < 0.05f)
 				gillInnerRadius = 0.05f;
 			if (gillInnerRadius > 0.95f)
@@ -298,18 +330,18 @@ public class MushroomMesh : MonoBehaviour
 		float cosOffset = Random.Range(0, 2 * Mathf.PI);
 		float sinOfffset = Random.Range(0, 2 * Mathf.PI);
 		float val = Random.value;
-		if (val < 0.4f) //convex
+		if (val < 0.4f) //convex stipe
 		{
 			float fatSpot = Random.Range(0.5f, 0.75f); // 2/3 in default curve
 			stipeCurve = y => new Vector3(0.2f * Mathf.Cos(1.5f * y + cosOffset), -0.5f * Mathf.Pow(y - stipeLength * fatSpot, 2f) + 1.5f, 0.2f * Mathf.Sin(1.5f * y + sinOfffset));
 		}
-		else if (val < 0.7) //concave
+		else if (val < 0.7) //concave stipe
 		{
 			float verticalOffset = Random.Range(0.25f, 0.5f); //.5 is symmetrical; .25 is quite bottom heavy
 			float subtleness = .1f * Mathf.Pow(2f, Random.Range(-2f, 1f));
 			stipeCurve = y => new Vector3(0.2f * Mathf.Cos(1.5f * y + cosOffset), Mathf.Pow(y/stipeLength - verticalOffset, 4f) + subtleness, 0.2f * Mathf.Sin(1.5f * y + sinOfffset));
 		}
-		else 
+		else  //constant-width stipe
 		{
 			stipeCurve = y => new Vector3(0.2f * Mathf.Cos(1.5f * y + cosOffset), 1f, 0.2f * Mathf.Sin(1.5f * y + sinOfffset));
 		}
@@ -321,6 +353,16 @@ public class MushroomMesh : MonoBehaviour
 		float val2 = Random.Range(0f, 1f);
 		float gaussValue = Mathf.Sqrt(-2.0f * Mathf.Log(val1)) * Mathf.Sin(2.0f * Mathf.PI * val2);
 		return mean + stdDev * gaussValue;
+	}
+
+	public void RandomizePalette()
+	{
+		Color[] tempPalette = new Color[Random.Range(1, 5)];
+		for (int k = 0; k < tempPalette.Length; k++)
+		{
+			tempPalette[k] = new Color(Random.value, Random.value, Random.value);
+		}
+		Palette = tempPalette;
 	}
 
 	private void GenerateMaterial(int width, int height)
@@ -342,17 +384,7 @@ public class MushroomMesh : MonoBehaviour
 		float[] heightsPerlin = GetPerlin(width, 3, 7); //for normals
 		float[] heights = new float[width * height];
 
-		float channelOffset = 3 * Random.value;
 		float[] channels = new float[3]; //just make the array here so the garbage collector doesnt have to do so much
-		Vector3[] channelPoints = new Vector3[Random.Range(1, 5)];
-		palette = new Color[channelPoints.Length];
-		for (int k = 0; k < channelPoints.Length; k++)
-		{
-			channelPoints[k] = new Vector3(Random.value, Random.value, Random.value);
-			palette[k] = new Color(channelOffset % 1 * channelPoints[k][((int)channelOffset) % 3] + (1 - channelOffset % 1) * channelPoints[k][(1 + (int)channelOffset) % 3],
-					channelOffset % 1 * channelPoints[k][(1 + (int)channelOffset) % 3] + (1 - channelOffset % 1) * channelPoints[k][(2 + (int)channelOffset) % 3],
-					channelOffset % 1 * channelPoints[k][(2 + (int)channelOffset) % 3] + (1 - channelOffset % 1) * channelPoints[k][((int)channelOffset) % 3]);
-		}
 		float[] ch0Weights = GetWeights(3);
 		float[] ch1Weights = GetWeights(3);
 		float[] ch2Weights = GetWeights(3);
@@ -369,29 +401,11 @@ public class MushroomMesh : MonoBehaviour
 				channels[2] = ch2Weights[0] * ch2Perlin[i * width + j]
 					+ ch2Weights[1] * (1 - ch2Worley[i * width + j])
 					+ ch2Weights[2] * ch2Gradient[i * width + j];
-				//Vector3 force;
-				//Vector3 velocity = Vector3.zero;
-				//for (int l = 0; l < 50; l++)
-				//{
-				//	for (int k = 0; k < channelPoints.Length; k++)
-				//	{
-				//		Vector3 displacement = channelPoints[k] - new Vector3(channels[0], channels[1], channels[2]);
-				//		force = 0.002f * displacement / displacement.sqrMagnitude;
-				//		velocity += force;
-				//		channels[0] += velocity.x;
-				//		channels[1] += velocity.y;
-				//		channels[2] += velocity.z;
-				//		channels[0] = Mathf.Clamp01(channels[0]);
-				//		channels[1] = Mathf.Clamp01(channels[1]);
-				//		channels[2] = Mathf.Clamp01(channels[2]);
-
-				//	}
-				//}
-				float maxSqrDistance = (new Vector3(channels[0], channels[1], channels[2]) - channelPoints[0]).sqrMagnitude;
+				float maxSqrDistance = (new Vector3(channels[0], channels[1], channels[2]) - paletteVects[0]).sqrMagnitude;
 				int closestColor = 0;
-				for (int k = 1; k < channelPoints.Length; k++)
+				for (int k = 1; k < paletteVects.Length; k++)
 				{
-					float sqrMag = (new Vector3(channels[0], channels[1], channels[2]) - channelPoints[k]).sqrMagnitude;
+					float sqrMag = (new Vector3(channels[0], channels[1], channels[2]) - paletteVects[k]).sqrMagnitude;
 					if (sqrMag > maxSqrDistance)
 					{
 						maxSqrDistance = sqrMag;
@@ -399,22 +413,20 @@ public class MushroomMesh : MonoBehaviour
 					}
 				}
 				float secondBiggest = float.MinValue;
-				for (int k = 0; k < channelPoints.Length; k++)
+				for (int k = 0; k < paletteVects.Length; k++)
 				{
-					float sqrMag = (new Vector3(channels[0], channels[1], channels[2]) - channelPoints[k]).sqrMagnitude;
+					float sqrMag = (new Vector3(channels[0], channels[1], channels[2]) - paletteVects[k]).sqrMagnitude;
 					if (sqrMag > secondBiggest && Math.Abs(sqrMag-maxSqrDistance) < 0.0001f )
 					{
 						secondBiggest = sqrMag;
 					}
 				}
-				float weight = channelPoints.Length > 1 ? maxSqrDistance - secondBiggest : 0.5f;
-				channels[0] = weight * channelPoints[closestColor].x + (1 - weight) * channels[0];
-				channels[1] = weight * channelPoints[closestColor].y + (1 - weight) * channels[1];
-				channels[2] = weight * channelPoints[closestColor].z + (1 - weight) * channels[2];
+				float weight = paletteVects.Length > 1 ? maxSqrDistance - secondBiggest : 0.5f;
+				channels[0] = weight * paletteVects[closestColor].x + (1 - weight) * channels[0];
+				channels[1] = weight * paletteVects[closestColor].y + (1 - weight) * channels[1];
+				channels[2] = weight * paletteVects[closestColor].z + (1 - weight) * channels[2];
 
-				pixels[i * width + j] = new Color(channelOffset%1*channels[((int)channelOffset)%3]+(1-channelOffset%1)*channels[(1 + (int)channelOffset) % 3], 
-					channelOffset%1 * channels[(1 + (int)channelOffset) % 3] + (1 - channelOffset%1) * channels[(2 + (int)channelOffset) % 3],
-					channelOffset%1 * channels[(2 + (int)channelOffset) % 3] + (1 - channelOffset%1) * channels[((int)channelOffset) % 3]);
+				pixels[i * width + j] = new Color(channels[0], channels[1], channels[2]);
 
 				heights[i * width + j] = heightsPerlin[i * width + j]; //heights look unnecessary, but we will eventually add stuff
 				heightPixels[i * width + j] = new Color(heights[i * width + j], heights[i * width + j], heights[i * width + j]); 
